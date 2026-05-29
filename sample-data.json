@@ -1,0 +1,151 @@
+{
+  "contacts": [
+    {
+      "id": 1000,
+      "nom": "Dupont",
+      "prenom": "Jean",
+      "email": "jean.dupont@example.com",
+      "telephone": "04 72 40 58 79",
+      "entreprise": "Agence Ã‰vÃ©nementielle XYZ",
+      "type": "client",
+      "statut": "actif",
+      "createdAt": "2026-05-29T10:00:00Z"
+    },
+    {
+      "id": 1001,
+      "nom": "Martin",
+      "prenom": "Sophie",
+      "email": "sophie.martin@corp.fr",
+      "telephone": "06 12 34 56 78",
+      "entreprise": "Groupe Innovation Plus",
+      "type": "prospect",
+      "statut": "actif",
+      "createdAt": "2026-05-28T14:30:00Z"
+    },
+    {
+      "id": 1002,
+      "nom": "Bernard",
+      "prenom": "FranÃ§ois",
+      "email": "f.bernard@services.com",
+      "telephone": "04 78 12 34 56",
+      "entreprise": "Services Professionnels",
+      "type": "client",
+      "statut": "actif",
+      "createdAt": "2026-05-25T09:15:00Z"
+    }
+  ],
+  "evenements": [
+    {
+      "id": 2000,
+      "titre": "ConfÃ©rence Innovation 2026",
+      "type": "ConfÃ©rence",
+      "clientId": 1000,
+      "paxEstime": 150,
+      "statut": "confirme",
+      "notes": "Salle LumiÃ¨re, demande de rÃ©gisseur + technique son",
+      "createdAt": "2026-05-20T11:00:00Z"
+    },
+    {
+      "id": 2001,
+      "titre": "RÃ©union StratÃ©gique Q3",
+      "type": "RÃ©union",
+      "clientId": 1001,
+      "paxEstime": 45,
+      "statut": "proposition",
+      "notes": "Date Ã  confirmer",
+      "createdAt": "2026-05-27T15:45:00Z"
+    },
+    {
+      "id": 2002,
+      "titre": "Gala de Fin d'AnnÃ©e",
+      "type": "Gala",
+      "clientId": 1002,
+      "paxEstime": 250,
+      "statut": "confirme",
+      "notes": "DÃ©jÃ  plusieurs options reÃ§ues",
+      "createdAt": "2026-05-15T13:20:00Z"
+    }
+  ],
+  "options": [
+    {
+      "id": 3000,
+      "evenementId": 2000,
+      "heureDebugMontage": "2026-06-15T08:00:00Z",
+      "heureOuverturePublic": "2026-06-15T10:00:00Z",
+      "heureFermeturePublic": "2026-06-15T17:00:00Z",
+      "heureFinDemolition": "2026-06-15T18:30:00Z",
+      "paxEstime": 150,
+      "salleIds": "[\"lumiere\", \"ampere\"]",
+      "createdAt": "2026-05-21T10:00:00Z"
+    }
+  ],
+  "devis": [
+    {
+      "id": 4000,
+      "numero": "DEV-2026-001",
+      "optionId": 3000,
+      "services": [
+        { "id": "espace", "label": "Location d'espace", "montantHT": 2500 },
+        { "id": "regisseur", "label": "RÃ©gisseur", "montantHT": 800 },
+        { "id": "technique", "label": "Technique (Son/LumiÃ¨re)", "montantHT": 1200 }
+      ],
+      "montantHT": 4500,
+      "montantTTC": 5400,
+      "statut": "envoye",
+      "createdAt": "2026-05-21T14:00:00Z"
+    },
+    {
+      "id": 4001,
+      "numero": "DEV-2026-002",
+      "optionId": 3000,
+      "services": [
+        { "id": "espace", "label": "Location d'espace", "montantHT": 2500 }
+      ],
+      "montantHT": 2500,
+      "montantTTC": 3000,
+      "statut": "brouillon",
+      "createdAt": "2026-05-22T09:00:00Z"
+    }
+  ],
+  "factures": [
+    {
+      "id": 5000,
+      "numero": "FACT-2026-001",
+      "devisId": 4000,
+      "montantTTC": 5400,
+      "montantRecu": 5400,
+      "datePaiement": "2026-05-28T12:00:00Z",
+      "statutPaiement": "payee",
+      "createdAt": "2026-05-25T10:00:00Z"
+    }
+  ],
+  "taches": [
+    {
+      "id": 6000,
+      "titre": "Confirmation salles avec client",
+      "evenementId": 2000,
+      "priorite": "haute",
+      "statut": "a_faire",
+      "dueDate": "2026-06-01T17:00:00Z",
+      "createdAt": "2026-05-29T09:00:00Z"
+    },
+    {
+      "id": 6001,
+      "titre": "RÃ©ceptionner devis catering",
+      "evenementId": 2000,
+      "priorite": "normale",
+      "statut": "en_cours",
+      "dueDate": "2026-06-05T17:00:00Z",
+      "createdAt": "2026-05-29T09:30:00Z"
+    },
+    {
+      "id": 6002,
+      "titre": "Envoyer facture au client",
+      "evenementId": 2000,
+      "priorite": "basse",
+      "statut": "terminee",
+      "dueDate": "2026-05-28T17:00:00Z",
+      "createdAt": "2026-05-25T10:00:00Z"
+    }
+  ]
+}
