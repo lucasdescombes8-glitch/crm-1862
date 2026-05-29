@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM GROUPE 1862 - Gestion d'Ã‰vÃ©nements</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif; }
+    [data-tooltip] { position: relative; }
+    [data-tooltip]:hover::after { content: attr(data-tooltip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); white-space: nowrap; background: #1f2937; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; z-index: 50; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo, useReducer } = React;
+
+    // ============================================================================
+    // DATA CONSTANTS & INITIALIZATION
+    // ============================================================================
+
+    const CONTACT_TYPES = [
+      { id: 'prospect', label: 'Prospect', color: 'bg-blue-100 text-blue-800' },
+      { id: 'client', label: 'Client', color: 'bg-green-100 text-green-800' },
+      { id: 'fournisseur', label: 'Fournisseur', color: 'bg-orange-100 text-orange-800' },
+    ];
+
+    const CONTACT_STATUS = [
+      { id: 'actif', label: 'Actif', color: 'bg-green-100 text-green-800' },
+      { id: 'inactif', label: 'Inactif', color: 'bg-gray-100 text-gray-800' },
+      { id: 'refuse', label: 'RefusÃ©', color: 'bg-red-100 text-red-800' },
+    ];
+
+    const EVENEMENT_TYPES = [
+      'ConfÃ©rence', 'SÃ©minaire', 'Cocktail', 'DÃ®ner', 'RÃ©union', 'Formation', 'Exposition', 'Gala',
+    ];
+
+    const EVENEMENT_STATUS = [
+      { id: 'proposition', label: 'Proposition', color: 'bg-blue-100 text-blue-800' },
+      { id: 'confirme', label: 'ConfirmÃ©', color: 'bg-green-100 text-green-800' },
+      { id: 'refuse', label: 'RefusÃ©', color: 'bg-red-100 text-red-800' },
+    ];
+
+    const SALLES = [
+      { id: 'corbeille', name: 'Corbeille', capacity: 200, area: 350 },
+      { id: 'agents', name: 'Agents de Change', capacity: 150, area: 280 },
+      { id: 'allee-rhone', name: 'AllÃ©e RhÃ´ne', capacity: 300, area: 450 },
+      { id: 'lumiere', name: 'LumiÃ¨re', capacity: 100, area: 180 },
+      { id: 'ampere', name: 'AmpÃ¨re', capacity: 120, area: 200 },
+      { id: 'tony-garnier', name: 'Tony Garnier', capacity: 80, area: 150 },
+      { id: 'jacquard', name: 'Jacquard', capacity: 60, area: 120 },
+    ];
+
+    const SERVICES = [
+      { id: 'espace', label: 'Location d\'espace', category: 'Espace' },
+      { id: 'regisseur', label: 'RÃ©gisseur', category: 'RÃ©gisseur' },
+      { id: 'menage', label: 'MÃ©nage/Nettoyage', category: 'MÃ©nage' },
+      { id: 'permanence', label: 'Permanence d\'accueil', category: 'Permanence' },
+      { id: 'securite', label: 'SÃ©curitÃ©', category: 'SÃ©curitÃ©' },
+      { id: 'mobilier', label: 'Mobilier', category: 'Mobilier' },
+      { id: 'technique', label: 'Technique (Son/LumiÃ¨re)', category: 'Technique' },
+    ];
+
+    const GRILLE_TARIF = {
+      jour_lun_sam: 100,   // Tarif A
+      nuit_lun_sam: 80,    // Tarif B
+      jour_dim: 120,       // Tarif C
+      nuit_dim: 100,       // Tarif D
+      cci_reduction: 0.5,  // 50% reduction si CCI
+    };
+
+    // ============================================================================
+    // STORAGE MANAGER
+    // ============================================================================
+
+    const StorageManager = {
+      get: (key, defaultValue = null) => {
+        try {
+          const item = localStorage.getItem(key);
+          return item ? JSON.parse(item) : defaultValue;
+        } catch (e) {
+          console.error(`Storage error (get ${key}):`, e);
+          return defaultValue;
+        }
+      },
+      set: (key, value) => {
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+          console.error(`Storage error (set ${key}):`, e);
+        }
+      },
+      clear: () => localStorage.clear(),
+    };
+
+    // ============================================================================
+    // DATA HOOKS
+    // ============================================================================
+
+    const useContacts = () => {
+      const [contacts, setContacts] = useState(() =>
+        StorageManager.get('contacts', [])
+      );
+
+      const add = useCallback((contact) => {
+        const newContact = { id: Date.now(), createdAt: new Date().toISOString(), ...contact };
+        const updated = [newContact, ...contacts];
+        setContacts(updated);
+        StorageManager.set('contacts', updated);
+        return newContact;
+      }, [contacts]);
+
+      const update = useCallback((id, changes) => {
+        const updated = contacts.map(c => c.id === id ? { ...c, ...changes, updatedAt: new Date().toISOString() } : c);
+        setContacts(updated);
+        StorageManager.set('contacts', updated);
+      }, [contacts]);
+
+      const remove = useCallback((id) => {
+        const updated = contacts.filter(c => c.id !== id);
+        setContacts(updated);
+        StorageManager.set('contacts', updated);
+      }, [contacts]);
+
+      return { contacts, add, update, remove };
+    };
+
+    const useEvenements = () => {
+      const [evenements, setEvenements] = useState(() =>
+        StorageManager.get('evenements', [])
+      );
+
+      const add = useCallback((evenement) => {
+        const newEvenement = { id: Date.now(), createdAt: new Date().toISOString(), statut: 'proposition', ...evenement };
+        const updated = [newEvenement, ...evenements];
+        setEvenements(updated);
+        StorageManager.set('evenements', updated);
+        return newEvenement;
+      }, [evenements]);
+
+      const update = useCallback((id, changes) => {
+        const updated = evenements.map(e => e.id === id ? { ...e, ...changes, updatedAt: new Date().toISOString() } : e);
+        setEvenements(updated);
+        StorageManager.set('evenements', updated);
+      }, [evenements]);
+
+      const remove = useCallback((id) => {
+        const updated = evenements.filter(e => e.id !== id);
+        setEvenements(updated);
+        StorageManager.set('evenements', updated);
+      }, [evenements]);
+
+      return { evenements, add, update, remove };
+    };
+
+    const useOptions = () => {
+      const [options, setOptions] = useState(() =>
+        StorageManager.get('options', [])
+      );
+
+      const add = useCallback((option) => {
+        const newOption = { id: Date.now(), createdAt: new Date().toISOString(), ...option };
+        const updated = [newOption, ...options];
+        setOptions(updated);
+        StorageManager.set('options', updated);
+        return newOption;
+      }, [options]);
+
+      const update = useCallback((id, changes) => {
+        const updated = options.map(o => o.id === id ? { ...o, ...changes } : o);
+        setOptions(updated);
+        StorageManager.set('options', updated);
+      }, [options]);
+
+      const remove = useCallback((id) => {
+        const updated = options.filter(o => o.id !== id);
+        setOptions(updated);
+        StorageManager.set('options', updated);
+      }, [options]);
+
+      return { options, add, update, remove };
+    };
+
+    const useDevis = () => {
+      const [devis, setDevis] = useState(() =>
+        StorageManager.get('devis', [])
+      );
+
+      const add = useCallback((devisData) => {
+        const numero = `DEV-${new Date().getFullYear()}-${String(devis.length + 1).padStart(3, '0')}`;
+        const newDevis = { id: Date.now(), numero, createdAt: new Date().toISOString(), statut: 'brouillon', ...devisData };
+        const updated = [newDevis, ...devis];
+        setDevis(updated);
+        StorageManager.set('devis', updated);
+        return newDevis;
+      }, [devis]);
+
+      const update = useCallback((id, changes) => {
+        const updated = devis.map(d => d.id === id ? { ...d, ...changes, updatedAt: new Date().toISOString() } : d);
+        setDevis(updated);
+        StorageManager.set('devis', updated);
+      }, [devis]);
+
+      const remove = useCallback((id) => {
+        const updated = devis.filter(d => d.id !== id);
+        setDevis(updated);
+        StorageManager.set('devis', updated);
+      }, [devis]);
+
+      return { devis, add, update, remove };
+    };
+
+    const useFactures = () => {
+      const [factures, setFactures] = useState(() =>
+        StorageManager.get('factures', [])
+      );
+
+      const add = useCallback((factureData) => {
+        const numero = `FACT-${new Date().getFullYear()}-${String(factures.length + 1).padStart(3, '0')}`;
+        const newFacture = { id: Date.now(), numero, createdAt: new Date().toISOString(), statutPaiement: 'impayee', ...factureData };
+        const updated = [newFacture, ...factures];
+        setFactures(updated);
+        StorageManager.set('factures', updated);
+        return newFacture;
+      }, [factures]);
+
+      const update = useCallback((id, changes) => {
+        const updated = factures.map(f => f.id === id ? { ...f, ...changes } : f);
+        setFactures(updated);
+        StorageManager.set('factures', updated);
+      }, [factures]);
+
+      const remove = useCallback((id) => {
+        const updated = factures.filter(f => f.id !== id);
+        setFactures(updated);
+        StorageManager.set('factures', updated);
+      }, [factures]);
+
+      return { factures, add, update, remove };
+    };
+
+    const useTaches = () => {
+      const [taches, setTaches] = useState(() =>
+        StorageManager.get('taches', [])
+      );
+
+      const add = useCallback((tache) => {
+        const newTache = { id: Date.now(), createdAt: new Date().toISOString(), statut: 'a_faire', ...tache };
+        const updated = [newTache, ...taches];
+        setTaches(updated);
+        StorageManager.set('taches', updated);
+        return newTache;
+      }, [taches]);
+
+      const update = useCallback((id, changes) => {
+        const updated = taches.map(t => t.id === id ? { ...t, ...changes } : t);
+        setTaches(updated);
+        StorageManager.set('taches', updated);
+      }, [taches]);
+
+      const remove = useCallback((id) => {
+        const updated = taches.filter(t => t.id !== id);
+        setTaches(updated);
+        StorageManager.set('taches', updated);
+      }, [taches]);
+
+      return { taches, add, update, remove };
+    };
+
+    // ============================================================================
+    // UI COMPONENTS
+    // ============================================================================
+
+    const Button = ({ children, variant = 'primary', size = 'md', className = '', ...props }) => {
+      const variants = {
+        primary: 'bg-blue-600 text-white hover:bg-blue-700',
+        secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300',
+        danger: 'bg-red-600 text-white hover:bg-red-700',
+        success: 'bg-green-600 text-white hover:bg-green-700',
+      };
+      const sizes = { sm: 'px-3 py-1 text-sm', md: 'px-4 py-2', lg: 'px-6 py-3' };
+      return <button className={`rounded transition ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>;
+    };
+
+    const Input = ({ label, type = 'text', error, ...props }) => (
+      <div className="mb-3">
+        {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+        <input type={type} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : 'border-gray-300'}`} {...props} />
+        {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+      </div>
+    );
+
+    const Select = ({ label, options, error, ...props }) => (
+      <div className="mb-3">
+        {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+        <select className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : 'border-gray-300'}`} {...props}>
+          <option value="">-- SÃ©lectionner --</option>
+          {options?.map(opt => <option key={opt.id} value={opt.id}>{opt.label || opt.name}</option>)}
+        </select>
+        {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+      </div>
+    );
+
+    const Modal = ({ isOpen, title, children, onClose }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 max-h-90vh overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h2 className="text-xl font-bold">{title}</h2>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-700">âœ•</button>
+            </div>
+            <div className="p-6">{children}</div>
+          </div>
+        </div>
+      );
+    };
+
+    const Badge = ({ label, color = 'bg-gray-100 text-gray-800' }) => (
+      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${color}`}>{label}</span>
+    );
+
+    // ============================================================================
+    // DASHBOARD
+    // ============================================================================
+
+    const Dashboard = ({ contacts, evenements, devis, factures, taches }) => {
+      const stats = useMemo(() => {
+        const confirmedEvents = evenements.filter(e => e.statut === 'confirme').length;
+        const totalDevis = devis.length;
+        const acceptedDevis = devis.filter(d => d.statut === 'accepte').length;
+        const totalFactures = factures.length;
+        const paidFactures = factures.filter(f => f.statutPaiement === 'payee').length;
+        const unpaidFactures = factures.filter(f => f.statutPaiement === 'impayee').length;
+        const totalTaches = taches.length;
+        const overdueTaches = taches.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.statut !== 'terminee').length;
+
+        const totalCA = factures.filter(f => f.statutPaiement === 'payee').reduce((sum, f) => sum + (f.montantTTC || 0), 0);
+        const forecastCA = devis.filter(d => d.statut === 'accepte').reduce((sum, d) => sum + (d.montantTTC || 0), 0);
+
+        return { confirmedEvents, totalDevis, acceptedDevis, totalFactures, paidFactures, unpaidFactures, totalTaches, overdueTaches, totalCA, forecastCA };
+      }, [evenements, devis, factures, taches]);
+
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white p-6 rounded-lg shadow">
+            <p className="text-gray-600 text-sm mb-2">Ã‰vÃ©nements confirmÃ©s</p>
+            <p className="text-3xl font-bold text-blue-600">{stats.confirmedEvents}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <p className="text-gray-600 text-sm mb-2">Devis acceptÃ©s</p>
+            <p className="text-3xl font-bold text-green-600">{stats.acceptedDevis}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <p className="text-gray-600 text-sm mb-2">Factures impayÃ©es</p>
+            <p className="text-3xl font-bold text-red-600">{stats.unpaidFactures}</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <p className="text-gray-600 text-sm mb-2">TÃ¢ches en retard</p>
+            <p className="text-3xl font-bold text-orange-600">{stats.overdueTaches}</p>
+          </div>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // CONTACTS MODULE
+    // ============================================================================
+
+    const ContactForm = ({ contact, onSave, onClose }) => {
+      const [formData, setFormData] = useState(contact || {});
+      const [errors, setErrors] = useState({});
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const newErrors = {};
+        if (!formData.nom) newErrors.nom = 'Nom requis';
+        if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Email invalide';
+
+        if (Object.keys(newErrors).length > 0) {
+          setErrors(newErrors);
+          return;
+        }
+
+        onSave(formData);
+        onClose();
+      };
+
+      return (
+        <form onSubmit={handleSubmit}>
+          <Input label="Nom" value={formData.nom || ''} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} error={errors.nom} />
+          <Input label="PrÃ©nom" value={formData.prenom || ''} onChange={(e) => setFormData({ ...formData, prenom: e.target.value })} />
+          <Input label="Email" type="email" value={formData.email || ''} onChange={(e) => setFormData({ ...formData, email: e.target.value })} error={errors.email} />
+          <Input label="TÃ©lÃ©phone" value={formData.telephone || ''} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} />
+          <Input label="Entreprise" value={formData.entreprise || ''} onChange={(e) => setFormData({ ...formData, entreprise: e.target.value })} />
+          <Select label="Type" options={CONTACT_TYPES} value={formData.type || ''} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
+          <Select label="Statut" options={CONTACT_STATUS} value={formData.statut || 'actif'} onChange={(e) => setFormData({ ...formData, statut: e.target.value })} />
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            <Button type="submit">Enregistrer</Button>
+          </div>
+        </form>
+      );
+    };
+
+    const ContactsModule = ({ contacts, onAddContact, onUpdateContact, onRemoveContact }) => {
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [editingContact, setEditingContact] = useState(null);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [filterType, setFilterType] = useState('');
+      const [filterStatus, setFilterStatus] = useState('');
+
+      const filtered = useMemo(() => {
+        return contacts.filter(c => {
+          const matchesQuery = !searchQuery || c.nom?.toLowerCase().includes(searchQuery.toLowerCase()) || c.email?.toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesType = !filterType || c.type === filterType;
+          const matchesStatus = !filterStatus || c.statut === filterStatus;
+          return matchesQuery && matchesType && matchesStatus;
+        });
+      }, [contacts, searchQuery, filterType, filterStatus]);
+
+      const handleAddContact = () => {
+        setEditingContact(null);
+        setIsModalOpen(true);
+      };
+
+      const handleEditContact = (contact) => {
+        setEditingContact(contact);
+        setIsModalOpen(true);
+      };
+
+      const handleSaveContact = (formData) => {
+        if (editingContact) {
+          onUpdateContact(editingContact.id, formData);
+        } else {
+          onAddContact(formData);
+        }
+      };
+
+      return (
+        <div>
+          <div className="mb-6 flex gap-4 flex-wrap">
+            <input type="text" placeholder="Rechercher..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg" />
+            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
+              <option value="">Tous les types</option>
+              {CONTACT_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
+              <option value="">Tous les statuts</option>
+              {CONTACT_STATUS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <Button onClick={handleAddContact}>+ Ajouter</Button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Nom</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Email</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Type</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Statut</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map(contact => {
+                  const typeColor = CONTACT_TYPES.find(t => t.id === contact.type)?.color || 'bg-gray-100 text-gray-800';
+                  const statusColor = CONTACT_STATUS.find(s => s.id === contact.statut)?.color || 'bg-gray-100 text-gray-800';
+                  return (
+                    <tr key={contact.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">{contact.nom} {contact.prenom}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{contact.email}</td>
+                      <td className="px-6 py-4"><Badge label={CONTACT_TYPES.find(t => t.id === contact.type)?.label} color={typeColor} /></td>
+                      <td className="px-6 py-4"><Badge label={CONTACT_STATUS.find(s => s.id === contact.statut)?.label} color={statusColor} /></td>
+                      <td className="px-6 py-4">
+                        <button onClick={() => handleEditContact(contact)} className="text-blue-600 hover:text-blue-800 mr-4">Ã‰diter</button>
+                        <button onClick={() => onRemoveContact(contact.id)} className="text-red-600 hover:text-red-800">Supprimer</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <Modal isOpen={isModalOpen} title={editingContact ? 'Ã‰diter le contact' : 'Nouveau contact'} onClose={() => setIsModalOpen(false)}>
+            <ContactForm contact={editingContact} onSave={handleSaveContact} onClose={() => setIsModalOpen(false)} />
+          </Modal>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // EVENEMENTS MODULE
+    // ============================================================================
+
+    const EvenementForm = ({ evenement, contacts, onSave, onClose }) => {
+      const [formData, setFormData] = useState(evenement || {});
+      const [errors, setErrors] = useState({});
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const newErrors = {};
+        if (!formData.titre) newErrors.titre = 'Titre requis';
+        if (!formData.clientId) newErrors.clientId = 'Client requis';
+        if (!formData.paxEstime || formData.paxEstime < 0) newErrors.paxEstime = 'PAX requis';
+
+        if (Object.keys(newErrors).length > 0) {
+          setErrors(newErrors);
+          return;
+        }
+
+        onSave(formData);
+        onClose();
+      };
+
+      return (
+        <form onSubmit={handleSubmit}>
+          <Input label="Titre" value={formData.titre || ''} onChange={(e) => setFormData({ ...formData, titre: e.target.value })} error={errors.titre} />
+          <Select label="Type" options={EVENEMENT_TYPES.map(t => ({ id: t, label: t }))} value={formData.type || ''} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
+          <Select label="Client" options={contacts} value={formData.clientId || ''} onChange={(e) => setFormData({ ...formData, clientId: parseInt(e.target.value) })} error={errors.clientId} />
+          <Input label="PAX estimÃ©" type="number" value={formData.paxEstime || ''} onChange={(e) => setFormData({ ...formData, paxEstime: parseInt(e.target.value) })} error={errors.paxEstime} />
+          <Select label="Statut" options={EVENEMENT_STATUS} value={formData.statut || 'proposition'} onChange={(e) => setFormData({ ...formData, statut: e.target.value })} />
+          <Input label="Notes" value={formData.notes || ''} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            <Button type="submit">Enregistrer</Button>
+          </div>
+        </form>
+      );
+    };
+
+    const EvenementsModule = ({ evenements, contacts, onAddEvenement, onUpdateEvenement, onRemoveEvenement }) => {
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [editingEvenement, setEditingEvenement] = useState(null);
+      const [filterStatus, setFilterStatus] = useState('');
+
+      const filtered = useMemo(() => {
+        return filterStatus ? evenements.filter(e => e.statut === filterStatus) : evenements;
+      }, [evenements, filterStatus]);
+
+      const handleSave = (formData) => {
+        if (editingEvenement) {
+          onUpdateEvenement(editingEvenement.id, formData);
+        } else {
+          onAddEvenement(formData);
+        }
+      };
+
+      return (
+        <div>
+          <div className="mb-6 flex gap-4">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
+              <option value="">Tous les statuts</option>
+              {EVENEMENT_STATUS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <Button onClick={() => { setEditingEvenement(null); setIsModalOpen(true); }}>+ Ajouter</Button>
+          </div>
+
+          <div className="grid gap-4">
+            {filtered.map(evt => {
+              const contact = contacts.find(c => c.id === evt.clientId);
+              const statusColor = EVENEMENT_STATUS.find(s => s.id === evt.statut)?.color || 'bg-gray-100 text-gray-800';
+              return (
+                <div key={evt.id} className="bg-white p-4 rounded-lg shadow hover:shadow-md transition">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-semibold text-lg">{evt.titre}</h3>
+                    <Badge label={EVENEMENT_STATUS.find(s => s.id === evt.statut)?.label} color={statusColor} />
+                  </div>
+                  <p className="text-gray-600 text-sm mb-2">{evt.type} â€¢ {evt.paxEstime} PAX</p>
+                  <p className="text-gray-600 text-sm mb-3">Client: {contact?.nom} {contact?.prenom}</p>
+                  {evt.notes && <p className="text-gray-500 text-sm mb-3 italic">{evt.notes}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={() => { setEditingEvenement(evt); setIsModalOpen(true); }} className="text-blue-600 hover:text-blue-800 text-sm">Ã‰diter</button>
+                    <button onClick={() => onRemoveEvenement(evt.id)} className="text-red-600 hover:text-red-800 text-sm">Supprimer</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Modal isOpen={isModalOpen} title={editingEvenement ? 'Ã‰diter l\'Ã©vÃ©nement' : 'Nouvel Ã©vÃ©nement'} onClose={() => setIsModalOpen(false)}>
+            <EvenementForm evenement={editingEvenement} contacts={contacts.map(c => ({ id: c.id, label: `${c.nom} ${c.prenom}` }))} onSave={handleSave} onClose={() => setIsModalOpen(false)} />
+          </Modal>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // TACHES KANBAN MODULE
+    // ============================================================================
+
+    const TachesKanban = ({ taches, evenements, onUpdateTache, onRemoveTache, onAddTache }) => {
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [editingTache, setEditingTache] = useState(null);
+
+      const byStatus = useMemo(() => ({
+        a_faire: taches.filter(t => t.statut === 'a_faire'),
+        en_cours: taches.filter(t => t.statut === 'en_cours'),
+        terminee: taches.filter(t => t.statut === 'terminee'),
+      }), [taches]);
+
+      const handleStatusChange = (tacheId, newStatus) => {
+        const tache = taches.find(t => t.id === tacheId);
+        if (tache) {
+          onUpdateTache(tacheId, { statut: newStatus });
+        }
+      };
+
+      const TacheCard = ({ tache }) => {
+        const evt = evenements.find(e => e.id === tache.evenementId);
+        const priorityColor = {
+          haute: 'border-l-4 border-red-500 bg-red-50',
+          normale: 'border-l-4 border-yellow-500 bg-yellow-50',
+          basse: 'border-l-4 border-green-500 bg-green-50',
+        }[tache.priorite] || 'border-l-4 border-gray-500 bg-gray-50';
+
+        return (
+          <div className={`bg-white p-3 rounded shadow cursor-move hover:shadow-md transition ${priorityColor}`}>
+            <p className="font-medium text-sm">{tache.titre}</p>
+            {evt && <p className="text-xs text-gray-600 mt-1">{evt.titre}</p>}
+            {tache.dueDate && <p className="text-xs text-gray-500 mt-1">Ã‰chÃ©ance: {new Date(tache.dueDate).toLocaleDateString('fr-FR')}</p>}
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => { setEditingTache(tache); setIsModalOpen(true); }} className="text-blue-600 text-xs hover:text-blue-800">Ã‰diter</button>
+              <button onClick={() => onRemoveTache(tache.id)} className="text-red-600 text-xs hover:text-red-800">Suppr</button>
+            </div>
+          </div>
+        );
+      };
+
+      const Column = ({ title, status, taskList }) => (
+        <div className="flex-1 bg-gray-100 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-800 mb-4">{title} ({taskList.length})</h3>
+          <div className="space-y-3">
+            {taskList.map(tache => (
+              <div key={tache.id} onDragStart={(e) => e.dataTransfer.setData('tacheId', tache.id)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleStatusChange(parseInt(e.dataTransfer.getData('tacheId')), status); }} draggable>
+                <TacheCard tache={tache} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+
+      return (
+        <div>
+          <Button onClick={() => { setEditingTache(null); setIsModalOpen(true); }} className="mb-6">+ Nouvelle tÃ¢che</Button>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Column title="Ã€ faire" status="a_faire" taskList={byStatus.a_faire} />
+            <Column title="En cours" status="en_cours" taskList={byStatus.en_cours} />
+            <Column title="TerminÃ©e" status="terminee" taskList={byStatus.terminee} />
+          </div>
+
+          <Modal isOpen={isModalOpen} title={editingTache ? 'Ã‰diter la tÃ¢che' : 'Nouvelle tÃ¢che'} onClose={() => setIsModalOpen(false)}>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const form = new FormData(e.target);
+              if (editingTache) {
+                onUpdateTache(editingTache.id, Object.fromEntries(form));
+              } else {
+                onAddTache(Object.fromEntries(form));
+              }
+              setIsModalOpen(false);
+            }}>
+              <Input label="Titre" name="titre" defaultValue={editingTache?.titre || ''} required />
+              <Select label="Ã‰vÃ©nement" name="evenementId" options={evenements.map(e => ({ id: e.id, label: e.titre }))} defaultValue={editingTache?.evenementId || ''} />
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">PrioritÃ©</label>
+                <select name="priorite" defaultValue={editingTache?.priorite || 'normale'} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                  <option value="basse">Basse</option>
+                  <option value="normale">Normale</option>
+                  <option value="haute">Haute</option>
+                </select>
+              </div>
+              <Input label="Ã‰chÃ©ance" name="dueDate" type="date" defaultValue={editingTache?.dueDate?.split('T')[0] || ''} />
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>Annuler</Button>
+                <Button type="submit">Enregistrer</Button>
+              </div>
+            </form>
+          </Modal>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // DEVIS MODULE
+    // ============================================================================
+
+    const DevisModule = ({ devis, options, contacts, evenements, onAddDevis, onUpdateDevis, onRemoveDevis }) => {
+      const [filterStatus, setFilterStatus] = useState('');
+
+      const filtered = useMemo(() => {
+        return filterStatus ? devis.filter(d => d.statut === filterStatus) : devis;
+      }, [devis, filterStatus]);
+
+      const getOptionDetails = (optionId) => {
+        const option = options.find(o => o.id === optionId);
+        const evt = option ? evenements.find(e => e.id === option.evenementId) : null;
+        return { option, evt };
+      };
+
+      return (
+        <div>
+          <div className="mb-6 flex gap-4">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
+              <option value="">Tous les statuts</option>
+              <option value="brouillon">Brouillon</option>
+              <option value="envoye">EnvoyÃ©</option>
+              <option value="accepte">AcceptÃ©</option>
+              <option value="refuse">RefusÃ©</option>
+            </select>
+          </div>
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">NumÃ©ro</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Ã‰vÃ©nement</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Montant TTC</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Statut</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map(d => {
+                  const { option, evt } = getOptionDetails(d.optionId);
+                  return (
+                    <tr key={d.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-mono text-sm">{d.numero}</td>
+                      <td className="px-6 py-4">{evt?.titre || 'N/A'}</td>
+                      <td className="px-6 py-4 font-semibold">{(d.montantTTC || 0).toFixed(2)} â‚¬</td>
+                      <td className="px-6 py-4"><Badge label={d.statut.toUpperCase()} color="bg-blue-100 text-blue-800" /></td>
+                      <td className="px-6 py-4 text-sm">
+                        <button onClick={() => onUpdateDevis(d.id, { statut: 'envoye' })} className="text-green-600 hover:text-green-800 mr-2">Envoyer</button>
+                        <button onClick={() => onRemoveDevis(d.id)} className="text-red-600 hover:text-red-800">Supp</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // FACTURES MODULE
+    // ============================================================================
+
+    const FacturesModule = ({ factures, devis, evenements, onUpdateFacture, onRemoveFacture }) => {
+      const [filterStatus, setFilterStatus] = useState('');
+
+      const filtered = useMemo(() => {
+        return filterStatus ? factures.filter(f => f.statutPaiement === filterStatus) : factures;
+      }, [factures, filterStatus]);
+
+      const totalPayable = useMemo(() => {
+        return factures.reduce((sum, f) => sum + (f.montantTTC || 0), 0);
+      }, [factures]);
+
+      const totalPaid = useMemo(() => {
+        return factures.filter(f => f.statutPaiement === 'payee').reduce((sum, f) => sum + (f.montantRecu || 0), 0);
+      }, [factures]);
+
+      return (
+        <div>
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-white p-4 rounded-lg shadow">
+              <p className="text-gray-600 text-sm mb-2">Total Ã  recevoir</p>
+              <p className="text-2xl font-bold text-blue-600">{totalPayable.toFixed(2)} â‚¬</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow">
+              <p className="text-gray-600 text-sm mb-2">Total reÃ§u</p>
+              <p className="text-2xl font-bold text-green-600">{totalPaid.toFixed(2)} â‚¬</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow">
+              <p className="text-gray-600 text-sm mb-2">ImpayÃ©</p>
+              <p className="text-2xl font-bold text-red-600">{(totalPayable - totalPaid).toFixed(2)} â‚¬</p>
+            </div>
+          </div>
+
+          <div className="mb-6 flex gap-4">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg">
+              <option value="">Tous les statuts</option>
+              <option value="impayee">ImpayÃ©e</option>
+              <option value="partiellement">Partiellement payÃ©e</option>
+              <option value="payee">PayÃ©e</option>
+            </select>
+          </div>
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">NumÃ©ro</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Montant TTC</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">ReÃ§u</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Statut</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map(f => (
+                  <tr key={f.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 font-mono text-sm">{f.numero}</td>
+                    <td className="px-6 py-4 font-semibold">{(f.montantTTC || 0).toFixed(2)} â‚¬</td>
+                    <td className="px-6 py-4">{(f.montantRecu || 0).toFixed(2)} â‚¬</td>
+                    <td className="px-6 py-4">
+                      <Badge
+                        label={f.statutPaiement.charAt(0).toUpperCase() + f.statutPaiement.slice(1)}
+                        color={f.statutPaiement === 'payee' ? 'bg-green-100 text-green-800' : f.statutPaiement === 'partiellement' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <button onClick={() => onUpdateFacture(f.id, { statutPaiement: 'payee' })} className="text-green-600 hover:text-green-800 mr-2">Marquer payÃ©e</button>
+                      <button onClick={() => onRemoveFacture(f.id)} className="text-red-600 hover:text-red-800">Supp</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // MAIN APP
+    // ============================================================================
+
+    const App = () => {
+      const [currentView, setCurrentView] = useState('dashboard');
+      const { contacts, add: addContact, update: updateContact, remove: removeContact } = useContacts();
+      const { evenements, add: addEvenement, update: updateEvenement, remove: removeEvenement } = useEvenements();
+      const { options, add: addOption, update: updateOption, remove: removeOption } = useOptions();
+      const { devis, add: addDevis, update: updateDevis, remove: removeDevis } = useDevis();
+      const { factures, add: addFacture, update: updateFacture, remove: removeFacture } = useFactures();
+      const { taches, add: addTache, update: updateTache, remove: removeTache } = useTaches();
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          {/* HEADER */}
+          <header className="bg-white shadow">
+            <div className="max-w-7xl mx-auto px-6 py-4">
+              <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold text-gray-900">CRM GROUPE 1862</h1>
+                <p className="text-sm text-gray-600">Gestion d'Ã‰vÃ©nements</p>
+              </div>
+            </div>
+          </header>
+
+          {/* NAVIGATION */}
+          <nav className="bg-white border-b">
+            <div className="max-w-7xl mx-auto px-6">
+              <div className="flex gap-8 overflow-x-auto">
+                {[
+                  { id: 'dashboard', label: 'ðŸ“Š Dashboard' },
+                  { id: 'contacts', label: 'ðŸ‘¥ Contacts' },
+                  { id: 'evenements', label: 'ðŸ“… Ã‰vÃ©nements' },
+                  { id: 'devis', label: 'ðŸ“„ Devis' },
+                  { id: 'factures', label: 'ðŸ’³ Factures' },
+                  { id: 'taches', label: 'âœ“ TÃ¢ches' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setCurrentView(tab.id)}
+                    className={`py-4 px-1 border-b-2 font-medium text-sm transition whitespace-nowrap ${
+                      currentView === tab.id
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </nav>
+
+          {/* CONTENT */}
+          <main className="max-w-7xl mx-auto px-6 py-8">
+            {currentView === 'dashboard' && <Dashboard contacts={contacts} evenements={evenements} devis={devis} factures={factures} taches={taches} />}
+            {currentView === 'contacts' && <ContactsModule contacts={contacts} onAddContact={addContact} onUpdateContact={updateContact} onRemoveContact={removeContact} />}
+            {currentView === 'evenements' && <EvenementsModule evenements={evenements} contacts={contacts.map(c => ({ id: c.id, label: `${c.nom} ${c.prenom}` }))} onAddEvenement={addEvenement} onUpdateEvenement={updateEvenement} onRemoveEvenement={removeEvenement} />}
+            {currentView === 'devis' && <DevisModule devis={devis} options={options} contacts={contacts} evenements={evenements} onAddDevis={addDevis} onUpdateDevis={updateDevis} onRemoveDevis={removeDevis} />}
+            {currentView === 'factures' && <FacturesModule factures={factures} devis={devis} evenements={evenements} onUpdateFacture={updateFacture} onRemoveFacture={removeFacture} />}
+            {currentView === 'taches' && <TachesKanban taches={taches} evenements={evenements} onUpdateTache={updateTache} onRemoveTache={removeTache} onAddTache={addTache} />}
+          </main>
+        </div>
+      );
+    };
+
+    // ============================================================================
+    // RENDER
+    // ============================================================================
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
